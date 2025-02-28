@@ -17,10 +17,11 @@ execute:
   message: false
   warning: false
 ---
+
 Load packages
 
 ```{r setup}
-library(spatstat)
+library(spatstat) # list objects to handle spatial data best. 
 library(terra) 
 library(tidyverse)
 library(here)
@@ -30,14 +31,13 @@ library(tmap)
 
 ## Read in Data and Visualize
 
-
 ```{r}
 ### Read in the tree vole data
-voles_sf <- read_sf(dsn = here("data/voledata"), 
-                    layer = "ds033") %>% 
-  janitor::clean_names() %>%
+voles_sf <- read_sf(dsn = here("data/voledata"),  
+                    layer = "ds033") %>%  
+  janitor::clean_names() %>% 
   select(county) %>%      
-  filter(county == "HUM")
+  filter(county == "HUM") 
 
 
 ### Plot it (exploratory)
@@ -49,7 +49,7 @@ humboldt_sf <- read_sf(dsn = here("data/voledata"),
   janitor::clean_names() %>%
   filter(name == "Humboldt") %>% 
   select(name) %>% ### Only keep one attribute (name) to simplify
-  st_transform(crs = st_crs(voles_sf))
+  st_transform(crs = st_crs(voles_sf)) # Make sure CRS match to overlay correctly in same location
 
 
 
@@ -66,7 +66,6 @@ ggplot() +
   theme_void()
 ```
 
-
 ## Point Pattern Analysis
 
 Looking at the graph seems like there are distinct clusters of voles in Humboldt County, but there is a lot of noise so we may not be able to stay with staticstical certainity that the clusters our eyes pick out are not random.
@@ -78,10 +77,11 @@ To conduct point pattern analysis, we need to blend the voles data as points wit
 voles_ppp <- as.ppp(voles_sf) 
 
 ### Convert county boundary to observation window
-humboldt_win <- as.owin(humboldt_sf) 
+humboldt_win <- as.owin(humboldt_sf)  
 
 ### Combine as a point pattern object (points + window):
 voles_full <- ppp(voles_ppp$x, voles_ppp$y, window = humboldt_win)
+  # Translation of window leads to one point being outside of window
 
 plot(voles_full) 
 
@@ -96,16 +96,16 @@ Run to see vole "hotspots" by kernel density, then see what happens when you cha
 ```{r}
 voles_density <- density(voles_full, sigma = 5000) ### try different sigmas
 
+# Sigma is the assumed variance around these points. Balance between overfitting and underfitting. Subjective
+
 plot(voles_density)
 ```
 
 Describe what the sigma parameter does.
 
-
 ## Nearest neighbor (G-function)
 
 In this week's lecture, we learned about distance methods to compare our point pattern to a scenario of complete spatial randomness. Here, we'll use both the G- and L-functions (L function is the K-function, standardized...interpretation is the same) to compare our observed point pattern to a simulated CSR scenario, to help us determine if it is *more clustered* or *more uniform* than CSR.
-
 
 ```{r}
 #| output: false
@@ -127,28 +127,47 @@ Let's examine the output, notice I turned the code chunk option for this code ex
 gfunction_out ### Check the output of gfunction, then...
 plot(gfunction_out)
 
+# we see p  = 0.0198 and the G_obs is above the G_theoretical for Complete Spatial Randomness, so we can say we are clustered
 ```
 
-
-The observed line is much higher than the bounds of the theoritical line. We have sufficient evidence to conclude the voles are not randomly distributed.  
+The observed line is much higher than the bounds of the theoritical line. We have sufficient evidence to conclude the voles are not randomly distributed.
 
 While the base plot looks good. Let's make our own in ggplot to practice the our wrangling skills. What is the class of the `gfunction_out` object? What are the column names? What do you think the `obs`, `theo`, `lo`, and `hi` columns represent? How do we pivot the table to a useful dataframe to plot in ggplot?
 
+```{r}
+class(gfunction_out)
 
+colnames(gfunction_out)
 
+gfunction_df <- as.data.frame(gfunction_out) |>
+  pivot_longer(cols = -r, names_to = 'model')
+
+ggplot(gfunction_df, aes(x = r, y=value, color = model))+
+  geom_line()+
+  theme_bw()
+```
 
 ### L-Function
- 
-How does the G-function differ from Ripley's K-function? 
- 
 
+How does the G-function differ from Ripley's K-function?
 
-With the same `envelope()` function from before, calculate the L-function. Because we're looking for the radius around points we have to change our `r` vector to match the entire size of the county ~80km. Also only use nsim=10 because it takes a long time to run.
+With the same `envelope()` function from before, calculate the L-function. Because we're looking for the radius around points we have to change our `r` vector to match the entire size of the county \~80km. Also only use nsim=10 because it takes a long time to run.
+
+```{r}
+r_vec <- seq(0, 80000, 5000)
+
+lfunction_out <- envelope(voles_full, fun = Lest, r = r_vec, 
+                          nsim = 10) 
+```
 
 Plot the L-function and interpret the results.
 
+```{r}
+#| output: false
 
+lfunction_out ### Check the output of gfunction, then...
+plot(lfunction_out)
 
+```
 
-
-
+So the K function shows much more certainty that the data is clustered.
